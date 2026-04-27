@@ -25,7 +25,7 @@ class KaneCli < Formula
     #    downloads a pinned Chrome-for-Testing build to the user's cache dir
     #    (~/.cache/kane-cli/chrome on macOS/Linux). Failures are non-fatal — see
     #    KANE_CLI_SKIP_BROWSER_DOWNLOAD and KANE_CLI_CHROME_PATH in the caveats
-    #    below for opt-outs. Recovery: `kane-cli doctor --install-browser`.
+    #    below for opt-outs. Recovery: `brew reinstall LambdaTest/kane/kane-cli`.
   end
 
   def caveats
