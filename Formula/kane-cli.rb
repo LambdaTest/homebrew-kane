@@ -16,17 +16,14 @@ class KaneCli < Formula
     system "npm", "install", *std_npm_args
     bin.install_symlink libexec.glob("bin/*")
 
-    # `npm install` triggers two automatic behaviors here:
+    # `npm install` resolves the optionalDependencies block in the meta package
+    # (@testmuai/kane-cli-{darwin-arm64,linux-x64,win-x64}) and pulls only the
+    # platform-specific native runner binary; others are silently skipped.
     #
-    # 1. optionalDependencies resolves to the matching platform binary package
-    #    (@testmuai/kane-cli-{darwin-arm64,linux-x64,win-x64}). npm installs only
-    #    the one for the current platform; others are silently skipped.
-    #
-    # 2. The postinstall hook (scripts/install-chrome.cjs, ships with 0.3.0+)
-    #    verifies Google Chrome is present at /Applications/Google Chrome.app
-    #    and prints install instructions otherwise. With the cask depends_on
-    #    above, brew has already installed Chrome by the time the hook runs,
-    #    so the check passes silently. The hook is fail-soft regardless.
+    # Chrome is installed by `depends_on cask: "google-chrome"` above, before
+    # this block runs. kane-cli verifies Chrome is reachable at runtime via
+    # the gate in src/orchestration/prepare-chrome.ts — produces a clean
+    # actionable error if Chrome is missing or moved.
   end
 
   def caveats
