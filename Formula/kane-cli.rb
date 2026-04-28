@@ -10,6 +10,7 @@ class KaneCli < Formula
   version "0.2.6"
 
   depends_on "node"
+  depends_on cask: "google-chrome"
 
   def install
     system "npm", "install", *std_npm_args
@@ -22,10 +23,10 @@ class KaneCli < Formula
     #    the one for the current platform; others are silently skipped.
     #
     # 2. The postinstall hook (scripts/install-chrome.cjs, ships with 0.3.0+)
-    #    downloads a pinned Chrome-for-Testing build to the user's cache dir
-    #    (~/.cache/kane-cli/chrome on macOS/Linux). Failures are non-fatal — see
-    #    KANE_CLI_SKIP_BROWSER_DOWNLOAD and KANE_CLI_CHROME_PATH in the caveats
-    #    below for opt-outs. Recovery: `brew reinstall LambdaTest/kane/kane-cli`.
+    #    verifies Google Chrome is present at /Applications/Google Chrome.app
+    #    and prints install instructions otherwise. With the cask depends_on
+    #    above, brew has already installed Chrome by the time the hook runs,
+    #    so the check passes silently. The hook is fail-soft regardless.
   end
 
   def caveats
@@ -33,17 +34,12 @@ class KaneCli < Formula
       Currently supported platforms: macOS ARM64 (Apple Silicon) and Linux x64.
       Intel Mac and ARM Linux binaries are not yet available.
 
-      On first install, kane-cli downloads a known-good Chrome-for-Testing build
-      (~150 MB) to ~/.cache/kane-cli/chrome. Subsequent installs reuse the cache.
+      kane-cli requires Google Chrome at /Applications/Google Chrome.app.
+      Homebrew installs it automatically via the `google-chrome` cask
+      declared as a dependency.
 
-      Skip the Chrome download (CI / air-gapped environments):
-        KANE_CLI_SKIP_BROWSER_DOWNLOAD=1 brew install LambdaTest/kane/kane-cli
-
-      Use an existing Chrome binary instead:
-        KANE_CLI_CHROME_PATH=/path/to/chrome brew install LambdaTest/kane/kane-cli
-
-      The Chrome cache survives `brew uninstall`. Remove it manually with:
-        rm -rf ~/.cache/kane-cli
+      To use an existing Chrome at a non-standard path:
+        export KANE_CLI_CHROME_PATH=/path/to/chrome
     EOS
   end
 
