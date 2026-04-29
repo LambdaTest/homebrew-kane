@@ -25,6 +25,15 @@ class KaneCli < Formula
 
   depends_on "node"
 
+  # Chrome is the runtime browser kane-cli drives. On macOS, brew can
+  # install it directly via the cask so users don't need a separate step.
+  # Linux brew has no cask infrastructure, so Linux users install Chrome
+  # themselves (caveats explain) — kane-cli's runtime gate prints
+  # per-distro instructions if Chrome is missing.
+  on_macos do
+    depends_on cask: "google-chrome"
+  end
+
   def install
     # Strip --build-from-source from std_npm_args (brew/Library/Homebrew/
     # language/node.rb injects it unconditionally). For sharp, that flag
@@ -80,6 +89,13 @@ class KaneCli < Formula
     <<~EOS
       Currently supported platforms: macOS (Apple Silicon and Intel) and Linux x64.
       ARM Linux is not yet available.
+
+      Chrome is required. macOS installs it automatically via the
+      `google-chrome` cask declared above. On Linux, install separately:
+        https://www.google.com/chrome/
+
+      To skip the Chrome check (CI / air-gapped / non-standard install):
+        export KANE_CLI_SKIP_BROWSER_DOWNLOAD=1
     EOS
   end
 
