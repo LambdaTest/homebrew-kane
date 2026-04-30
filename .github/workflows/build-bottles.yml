@@ -85,10 +85,19 @@ jobs:
         #   arm64_linux   — `@testmuai/kane-cli-linux-arm64` does not exist
         #                   on npm, so there's no platform binary to bundle.
         #                   Out of scope until kane-cli ships that subpackage.
+        # macos-15 (Sequoia) and macos-latest (which currently aliases
+        # macos-15) are dropped: they consistently produce gzip-corrupt
+        # bottles when bottling kane-cli — the resulting tarball fails
+        # `gzip -t` with "invalid compressed data--crc error", so brew
+        # extraction bails mid-stream. Reproducible across multiple
+        # builds (see homebrew-kane#12). macos-14 (Sonoma) is unaffected
+        # and brew's bottle fallback ensures Sequoia/Tahoe users pour
+        # the arm64_sonoma bottle correctly.
+        # TODO: investigate macos-15 corruption — file with GHA runner
+        #   image team if reproducible in isolation. Re-add macos-15 +
+        #   macos-latest once root-caused.
         os:
-          - macos-15
           - macos-14
-          - macos-latest
           - ubuntu-latest
     runs-on: ${{ matrix.os }}
     steps:
@@ -163,6 +172,30 @@ jobs:
           done
 
           ls -la kane-cli-*.bottle.* || true
+
+      - name: Verify bottle integrity
+        # Gate against corrupt bottles before upload. Background:
+        # macos-15 silently produced gzip-CRC-corrupt bottles for kane-cli
+        # 0.2.9 across multiple builds — the bottle file existed at the
+        # right size, the build "succeeded", but `gzip -t` failed and
+        # brew extraction bailed on user machines. This step would have
+        # caught it. See homebrew-kane#12 for the incident.
+        run: |
+          set -e
+          for bottle in kane-cli-*.bottle.tar.gz; do
+            [ -e "$bottle" ] || continue
+            if ! gzip -t "$bottle" 2>&1; then
+              echo "❌ $bottle failed gzip integrity check"
+              exit 1
+            fi
+            # Also verify tar can list contents end-to-end (catches
+            # cases where gzip is fine but tar payload is truncated).
+            if ! tar -tzf "$bottle" >/dev/null 2>&1; then
+              echo "❌ $bottle: gzip OK but tar listing failed"
+              exit 1
+            fi
+            echo "✅ $bottle: gzip + tar listing OK"
+          done
 
       - name: Upload bottle artifact
         uses: actions/upload-artifact@v4
