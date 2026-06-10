@@ -199,6 +199,7 @@ jobs:
       - name: Build bottle
         env:
           HOMEBREW_NO_AUTO_UPDATE: "1"
+          HOMEBREW_NO_SANDBOX_LINUX: "1"
         run: |
           VERSION="${{ needs.guard.outputs.version }}"
           ROOT_URL="https://github.com/LambdaTest/homebrew-kane/releases/download/kane-cli-${VERSION}"
