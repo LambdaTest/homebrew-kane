@@ -4,10 +4,10 @@
 class KaneCli < Formula
   desc "KaneAI browser automation CLI - AI-powered testing"
   homepage "https://www.lambdatest.com/kane-ai"
-  url "https://registry.npmjs.org/@testmuai/kane-cli/-/kane-cli-0.4.1.tgz"
-  sha256 "487f50b29f45f4f980db4edf53541064c260db26e6da70b284b3641c61fc2ae9"
+  url "https://registry.npmjs.org/@testmuai/kane-cli/-/kane-cli-0.4.2.tgz"
+  sha256 "5b1b53ce9c8389ad985486170894b270111a2100dcfff8a9cef88cb2840c60a1"
   license "Apache-2.0"
-  version "0.4.1"
+  version "0.4.2"
 
   # Bottle block intentionally removed — the previously published bottles
   # ship without the v16-runner binary (platform optional dep was missing
