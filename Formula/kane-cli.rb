@@ -15,13 +15,6 @@ class KaneCli < Formula
     sha256 cellar: :any_skip_relocation, x86_64_linux: "9cbf66acfddda86d5583d6baaf2bda18c98f7f9def4e4c8d0dda35dbfd8092a2"
   end
 
-  # Bottle block intentionally removed — the previously published bottles
-  # ship without the v16-runner binary (platform optional dep was missing
-  # from the brew install). The `.github/workflows/build-bottles.yml`
-  # pipeline rebuilds bottles and rewrites this block when re-run after
-  # this fix lands. Until then brew falls back to source build, which is
-  # correct with the install changes below.
-
   depends_on "node"
 
   def install
