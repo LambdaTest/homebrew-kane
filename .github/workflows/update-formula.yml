@@ -34,22 +34,39 @@ jobs:
           fi
 
       - name: Wait for npm package availability
+        # Poll the main package AND every platform subpackage that the bottle
+        # matrix builds (macos-14=arm64, ubuntu=x86_64-linux) before this
+        # workflow auto-chains "Build bottles". The platform subpackages are
+        # published separately from the main package and can lag behind on the
+        # registry; if bottling starts before -darwin-arm64 is live, the formula
+        # installs nothing and ships a bottle without v16-runner. We do NOT poll
+        # non-bottled platforms (e.g. -darwin-x64) — a late one there must not
+        # block the release; its absence only matters on a source-build, which
+        # the formula's own install guard handles.
         run: |
           VERSION="${{ steps.version.outputs.version }}"
-          PKG="@testmuai/kane-cli"
-          echo "Waiting for ${PKG}@${VERSION} on npmjs.com..."
-          for i in $(seq 1 24); do
-            STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
-              "https://registry.npmjs.org/${PKG}/${VERSION}")
-            if [ "$STATUS" = "200" ]; then
-              echo "${PKG}@${VERSION} is available."
-              exit 0
+          PKGS="@testmuai/kane-cli \
+                @testmuai/kane-cli-darwin-arm64 \
+                @testmuai/kane-cli-linux-x64"
+          for PKG in $PKGS; do
+            echo "Waiting for ${PKG}@${VERSION} on npmjs.com..."
+            FOUND=""
+            for i in $(seq 1 24); do
+              STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+                "https://registry.npmjs.org/${PKG}/${VERSION}")
+              if [ "$STATUS" = "200" ]; then
+                echo "${PKG}@${VERSION} is available."
+                FOUND="yes"
+                break
+              fi
+              echo "Poll ${i}/24 — HTTP ${STATUS}, sleeping 5s..."
+              sleep 5
+            done
+            if [ -z "$FOUND" ]; then
+              echo "ERROR: ${PKG}@${VERSION} not visible on npmjs.com after 2m"
+              exit 1
             fi
-            echo "Poll ${i}/24 — HTTP ${STATUS}, sleeping 5s..."
-            sleep 5
           done
-          echo "ERROR: ${PKG}@${VERSION} not visible on npmjs.com after 2m"
-          exit 1
 
       - name: Compute tarball sha256
         id: tarball
