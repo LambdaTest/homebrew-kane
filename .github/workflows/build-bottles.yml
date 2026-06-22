@@ -7,19 +7,19 @@ name: Build bottles
 # so user toolchain (Xcode/CLT) version becomes irrelevant.
 #
 # Trigger model:
-#   - `workflow_dispatch` only — manual trigger. After a new npm version
-#     publishes and `Update Homebrew Formula` bumps the formula version,
-#     a release manager dispatches this workflow with the new version
-#     number to produce bottles.
+#   - `workflow_dispatch` — can be triggered manually with a version, and is
+#     ALSO auto-chained by `Update Homebrew Formula` after a version bump
+#     (that workflow runs `gh workflow run "Build bottles"`). So in the normal
+#     release path there is no human in the loop.
 #
 # Why not `workflow_run` after Update Homebrew Formula:
-#   The auto-trigger raced npm publish timing — bottles built within 2
-#   minutes of `npm publish` hit npm's `--min-release-age` threshold and
-#   produced silently-broken installs (kane-cli 0.2.9 incident). Manual
-#   dispatch puts a human in the loop with timing buffer + the chance to
-#   verify the npm tarball is healthy before spending CI cycles bottling
-#   it. The integrity-check step below is a safety net; manual dispatch
-#   is the real prevention.
+#   `workflow_run` raced npm publish timing — bottles built within 2 minutes
+#   of `npm publish` hit npm's `--min-release-age` threshold and produced
+#   silently-broken installs (kane-cli 0.2.9 incident). The auto-chain instead
+#   lives in `update-formula.yml`, whose "Wait for npm package availability"
+#   step now polls the main pkg AND the bottled platform subpackages before
+#   dispatching this workflow — that availability gate, not a human, is the
+#   real prevention. The integrity/content-check step below is the safety net.
 
 on:
   workflow_dispatch:
@@ -226,11 +226,18 @@ jobs:
         # multiple builds (homebrew-kane#12) — file existed at the right
         # size, build "succeeded", upload completed, but `gzip -t` failed
         # and brew extraction bailed on user machines. This step would
-        # have caught it. Two checks:
+        # have caught it. Checks:
         #   1. `gzip -t` — verifies the gzip stream itself
         #   2. `tar -tzf` — verifies tar can list contents end-to-end
         #      (catches truncation where gzip is fine but tar payload is
         #      cut short)
+        #   3. Content check — the v16-runner binary is actually inside the
+        #      bottle, non-trivially sized, and executable. Archive integrity
+        #      (1+2) passes even when the platform npm install produced nothing
+        #      (kane-cli 0.4.6 shipped a 38 MB binary-less arm64 bottle that
+        #      passed gzip/tar but failed `brew install` validation). Extract
+        #      and `find`/`wc -c`/`test -x` rather than parsing `tar -tzvf`
+        #      fields, which differ across BSD (macOS) and GNU (Linux) tar.
         run: |
           set -e
           for bottle in kane-cli-*.bottle.tar.gz; do
@@ -243,7 +250,34 @@ jobs:
               echo "❌ $bottle: gzip OK but tar listing failed"
               exit 1
             fi
-            echo "✅ $bottle: gzip + tar listing OK"
+
+            # Authoritative label->pkg mapping; fail closed on anything
+            # unexpected (a mislabeled bottle must error, not mis-check).
+            case "$bottle" in
+              *.x86_64_linux.bottle.*) PLATFORM_PKG="@testmuai/kane-cli-linux-x64" ;;
+              *.arm64_*.bottle.*)      PLATFORM_PKG="@testmuai/kane-cli-darwin-arm64" ;;
+              *.x86_64_*.bottle.*)     PLATFORM_PKG="@testmuai/kane-cli-darwin-x64" ;;
+              *) echo "❌ $bottle: unrecognized bottle label, cannot verify runner"; exit 1 ;;
+            esac
+            RUNNER_SUFFIX="node_modules/${PLATFORM_PKG}/bin/v16-runner"
+
+            # Extract-all + find: avoids BSD/GNU stored-member-name (./ / dir
+            # prefix) mismatches that selective `tar -x <member>` is prone to.
+            TMP=$(mktemp -d)
+            tar -xzf "$bottle" -C "$TMP"
+            RUNNER=$(find "$TMP" -path "*/${RUNNER_SUFFIX}" -type f | head -1)
+            if [ -z "$RUNNER" ]; then
+              echo "❌ $bottle is missing ${RUNNER_SUFFIX}"; rm -rf "$TMP"; exit 1
+            fi
+            BYTES=$(wc -c < "$RUNNER" | tr -d ' ')
+            if [ "${BYTES:-0}" -lt 1000000 ]; then
+              echo "❌ $bottle: v16-runner present but only ${BYTES} bytes (truncated)"; rm -rf "$TMP"; exit 1
+            fi
+            if [ ! -x "$RUNNER" ]; then
+              echo "❌ $bottle: v16-runner not executable"; rm -rf "$TMP"; exit 1
+            fi
+            rm -rf "$TMP"
+            echo "✅ $bottle: gzip + tar OK, v16-runner present (${BYTES} bytes, executable)"
           done
 
       - name: Upload bottle artifact
