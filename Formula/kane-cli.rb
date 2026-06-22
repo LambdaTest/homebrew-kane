@@ -4,16 +4,10 @@
 class KaneCli < Formula
   desc "KaneAI browser automation CLI - AI-powered testing"
   homepage "https://www.lambdatest.com/kane-ai"
-  url "https://registry.npmjs.org/@testmuai/kane-cli/-/kane-cli-0.4.6.tgz"
-  sha256 "e9d1bd321a80492133f1450feb432c24be0bf69c3b9cf669153f205c9343c3ce"
+  url "https://registry.npmjs.org/@testmuai/kane-cli/-/kane-cli-0.4.7.tgz"
+  sha256 "ce3af0048619d6b773791c59e036a90757c0a24f3aa762395fbf4bb935fc6d12"
   license "Apache-2.0"
-  version "0.4.6"
-
-  bottle do
-    root_url "https://github.com/LambdaTest/homebrew-kane/releases/download/kane-cli-0.4.6"
-    sha256 cellar: :any_skip_relocation, arm64_sonoma: "cbb4c444ec49757154df5b30bf40edde3010d364fb13f12ad3111b9c57cb8d37"
-    sha256 cellar: :any_skip_relocation, x86_64_linux: "9cbf66acfddda86d5583d6baaf2bda18c98f7f9def4e4c8d0dda35dbfd8092a2"
-  end
+  version "0.4.7"
 
   depends_on "node"
 
