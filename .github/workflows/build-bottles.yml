@@ -217,12 +217,14 @@ jobs:
 
           # Version-drift guard: brew must have bottled the version `guard`
           # resolved from the checked-out formula. If the tap resolved a stale
-          # formula, the Cellar version won't match VERSION, and the bottle
+          # formula, the expected Cellar version dir won't exist, and the bottle
           # filenames would later fail the publish glob with a confusing
           # "No bottle artifacts found". Fail here instead, with the real cause.
-          INSTALLED=$(ls "$(brew --cellar kane-cli)")
-          if [ "$INSTALLED" != "$VERSION" ]; then
-            echo "❌ Built kane-cli ${INSTALLED} but this run is for ${VERSION}."
+          # Check for the expected version dir directly (not `ls`-equality) so a
+          # future `revision` or a multi-version Cellar can't false-fail it.
+          if [ ! -d "$(brew --cellar kane-cli)/$VERSION" ]; then
+            echo "❌ Expected kane-cli ${VERSION} in the Cellar, but it is not there:"
+            ls -1 "$(brew --cellar kane-cli)" 2>/dev/null || true
             echo "   The local tap did not resolve the checked-out formula"
             echo "   (stale tap/formula). Aborting before producing mismatched bottles."
             exit 1
