@@ -25,17 +25,17 @@ class KaneCli < Formula
     args = std_npm_args.reject { |arg| arg == "--build-from-source" }
     system "npm", "install", *args
 
-    # Install the platform-specific optional dep that ships v16-runner.
+    # Install the platform-specific optional dep that ships the binaries.
     # brew's `--prefix=#{libexec}` mode behaves like a global install and
     # modern npm skips `optionalDependencies` in that mode, so the platform
     # subpackage (@testmuai/kane-cli-<plat>) is missing after the main
-    # install — kane-cli then can't find v16-runner at runtime.
+    # install — kane-cli then can't find its binaries at runtime.
     #
     # Install it explicitly into the main package's nested node_modules so
-    # the runtime resolver finds it via the first probed path (`<pkg>/dist
-    # /../node_modules/<plat-pkg>/bin/v16-runner`). brew's --ignore-scripts
-    # also blocks the platform pkg's postinstall (which chmods the binary),
-    # so chmod here ourselves.
+    # the runtime resolver finds them via the first probed path (`<pkg>/dist
+    # /../node_modules/<plat-pkg>/bin/`). brew's --ignore-scripts also blocks
+    # the platform pkg's postinstall (which chmods the binaries), so chmod
+    # here ourselves.
     # Hardware::CPU.arm? is true on Linux aarch64 too — gate Linux on
     # `intel?` so we don't try to install an x64 binary on linux-arm64.
     platform_pkg =
@@ -51,7 +51,19 @@ class KaneCli < Formula
     odie "kane-cli does not yet ship a v16-runner binary for this platform." if platform_pkg.nil?
 
     pkg_dir = libexec/"lib/node_modules/@testmuai/kane-cli"
-    runner = pkg_dir/"node_modules/#{platform_pkg}/bin/v16-runner"
+    bin_dir = pkg_dir/"node_modules/#{platform_pkg}/bin"
+
+    # The platform package ships two binaries and kane-cli needs both:
+    # v16-runner drives the browser, assurance-agent backs AI test authoring.
+    # Checking only one leaves the other free to go missing unnoticed.
+    binaries = ["v16-runner", "assurance-agent"].to_h { |name| [name, bin_dir/name] }
+
+    # A binary counts as installed only if it exists AND is a real (multi-MB)
+    # file — a present but empty/truncated one is the silent-broken-bottle mode.
+    complete = lambda do
+      binaries.each_value.all? { |path| path.exist? && path.size > 1_000_000 }
+    end
+
     cd pkg_dir do
       # Retry the platform install with backoff: the subpackage is published
       # separately from the main pkg and can lag behind on the npm registry,
@@ -59,7 +71,7 @@ class KaneCli < Formula
       # quiet_system (NOT system) so a nonzero exit doesn't raise and abort
       # before the later backoff attempts run. --prefer-online forces a real
       # re-fetch instead of replaying a stale/negative cache entry. Mirror
-      # brew's tightened npm flags; we chmod the binary ourselves below.
+      # brew's tightened npm flags; we chmod the binaries ourselves below.
       [0, 15, 45].each do |backoff|
         sleep backoff if backoff.positive?
         quiet_system "npm", "install", "--no-save",
@@ -67,25 +79,27 @@ class KaneCli < Formula
                      "--loglevel=error", "--prefer-online",
                      "--cache=#{HOMEBREW_CACHE}/npm_cache",
                      "#{platform_pkg}@#{version}"
-        break if runner.exist? && runner.size > 1_000_000
+        # Retry until EVERY binary landed — breaking as soon as one is present
+        # would let a half-installed package look complete and stop retrying.
+        break if complete.call
       end
     end
 
-    # The runner must exist AND be a real (multi-MB) binary — a present but
-    # empty/truncated file is the silent-broken-bottle failure mode. On CI /
-    # bottle builds, fail hard so a broken bottle can never build green. On a
-    # user source-build, warn but complete (the JS CLI still works; only
-    # `kane-cli run` needs the runner) rather than rolling back the install.
-    if runner.exist? && runner.size > 1_000_000
-      chmod 0755, runner
+    # On CI / bottle builds, fail hard so a broken bottle can never build green.
+    # On a user source-build, warn but complete (the JS CLI still works) rather
+    # than rolling back the install.
+    if complete.call
+      binaries.each_value { |path| chmod 0755, path }
     else
-      msg = "v16-runner missing or truncated after installing #{platform_pkg}@#{version} " \
-            "(found: #{runner.exist? ? "#{runner.size} bytes" : "absent"})"
+      missing = binaries.reject { |_, path| path.exist? && path.size > 1_000_000 }
+                        .map { |name, path| "#{name} (#{path.exist? ? "#{path.size} bytes" : "absent"})" }
+      msg = "missing or truncated after installing #{platform_pkg}@#{version}: #{missing.join(", ")}"
       if ENV["CI"] || ENV["HOMEBREW_BUILD_BOTTLE"]
         odie msg
       else
-        opoo "#{msg}. kane-cli is installed but `kane-cli run` will not work until the " \
-             "platform package is available on npm — re-run `brew reinstall kane-cli` later."
+        opoo "#{msg}. kane-cli is installed, but the commands that need these binaries will " \
+             "not work until the platform package is available on npm — re-run " \
+             "`brew reinstall kane-cli` later."
       end
     end
 
@@ -101,17 +115,21 @@ class KaneCli < Formula
 
   test do
     assert_match version.to_s, shell_output("#{bin}/kane-cli --version")
-    # Smoke-test the v16-runner binary is present and executable. Without
-    # this, `kane-cli --version` passes (it's pure JS) but `kane-cli run`
-    # throws `v16-runner not found`. See git history for the regression.
+    # Smoke-test that both bundled binaries are present and executable. Without
+    # this, `kane-cli --version` passes (it's pure JS) while the commands that
+    # need a binary throw `not found` at the user. See git history for the
+    # regression.
     runner_pkg =
       if OS.mac?
         Hardware::CPU.arm? ? "@testmuai/kane-cli-darwin-arm64" : "@testmuai/kane-cli-darwin-x64"
       elsif OS.linux? && Hardware::CPU.intel?
         "@testmuai/kane-cli-linux-x64"
       end
-    runner = libexec/"lib/node_modules/@testmuai/kane-cli/node_modules/#{runner_pkg}/bin/v16-runner"
-    assert_predicate runner, :exist?, "v16-runner binary missing — platform pkg #{runner_pkg} not installed"
-    assert_predicate runner, :executable?, "v16-runner not executable — postinstall chmod missed"
+    bin_dir = libexec/"lib/node_modules/@testmuai/kane-cli/node_modules/#{runner_pkg}/bin"
+    ["v16-runner", "assurance-agent"].each do |name|
+      binary = bin_dir/name
+      assert_predicate binary, :exist?, "#{name} binary missing — platform pkg #{runner_pkg} not installed"
+      assert_predicate binary, :executable?, "#{name} not executable — install-time chmod missed"
+    end
   end
 end
