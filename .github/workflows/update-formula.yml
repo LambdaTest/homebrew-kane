@@ -43,6 +43,15 @@ jobs:
         # non-bottled platforms (e.g. -darwin-x64) — a late one there must not
         # block the release; its absence only matters on a source-build, which
         # the formula's own install guard handles.
+        #
+        # TWO stages: metadata visibility, then the actual tarball BYTES.
+        # A version document going 200 does not mean every CDN edge can serve
+        # the .tgz yet — and npm treats the platform packages as OPTIONAL
+        # deps, so a failed tarball fetch is silently SKIPPED rather than
+        # fatal. That is exactly how the 0.6.2 bottle build installed a
+        # kane-cli without v16-runner/assurance-agent and died in the
+        # formula's content check (run 29539227276; same class as the 0.2.9
+        # incident). Gate the dispatch on a clean end-to-end fetch instead.
         run: |
           VERSION="${{ steps.version.outputs.version }}"
           PKGS="@testmuai/kane-cli \
@@ -64,6 +73,30 @@ jobs:
             done
             if [ -z "$FOUND" ]; then
               echo "ERROR: ${PKG}@${VERSION} not visible on npmjs.com after 2m"
+              exit 1
+            fi
+          done
+
+          # Stage 2: the bytes. Full fetch + gzip integrity per package —
+          # what `npm install` will actually need, not just the metadata.
+          for PKG in $PKGS; do
+            TARBALL=$(curl -fsSL "https://registry.npmjs.org/${PKG}/${VERSION}" | jq -r '.dist.tarball')
+            if [ -z "$TARBALL" ] || [ "$TARBALL" = "null" ]; then
+              echo "ERROR: could not resolve dist.tarball for ${PKG}@${VERSION}"
+              exit 1
+            fi
+            OK=""
+            for i in $(seq 1 8); do
+              if curl -fsSL "$TARBALL" | gzip -t 2>/dev/null; then
+                echo "${PKG}@${VERSION} tarball fetches clean end-to-end."
+                OK="yes"
+                break
+              fi
+              echo "Tarball poll ${i}/8 — ${PKG}@${VERSION} not cleanly fetchable yet, sleeping 15s..."
+              sleep 15
+            done
+            if [ -z "$OK" ]; then
+              echo "ERROR: ${PKG}@${VERSION} tarball not cleanly fetchable after ~2m — not dispatching the bottle build."
               exit 1
             fi
           done
