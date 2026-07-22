@@ -1,6 +1,8 @@
 # typed: false
 # frozen_string_literal: true
 
+require "json"
+
 class KaneCli < Formula
   desc "KaneAI browser automation CLI - AI-powered testing"
   homepage "https://www.lambdatest.com/kane-ai"
@@ -47,10 +49,12 @@ class KaneCli < Formula
     pkg_dir = libexec/"lib/node_modules/@testmuai/kane-cli"
     bin_dir = pkg_dir/"node_modules/#{platform_pkg}/bin"
 
-    # The platform package ships two binaries and kane-cli needs both:
-    # v16-runner drives the browser, assurance-agent backs AI test authoring.
-    # Checking only one leaves the other free to go missing unnoticed.
-    binaries = ["v16-runner", "assurance-agent"].to_h { |name| [name, bin_dir/name] }
+    # The platform package ships three binaries and kane-cli needs them all:
+    # v16-runner drives the browser, assurance-agent backs AI test authoring,
+    # and node is the bundled runtime the CLI respawns onto (the `node`
+    # dependency above is install-time only). Checking only some leaves the
+    # rest free to go missing unnoticed.
+    binaries = ["v16-runner", "assurance-agent", "node"].to_h { |name| [name, bin_dir/name] }
 
     # A binary counts as installed only if it exists AND is a real (multi-MB)
     # file — a present but empty/truncated one is the silent-broken-bottle mode.
@@ -104,12 +108,14 @@ class KaneCli < Formula
     <<~EOS
       Currently supported platforms: macOS (Apple Silicon and Intel) and Linux x64.
       ARM Linux is not yet available.
+      kane-cli runs on its own bundled Node runtime; the `node` dependency is
+      only used at install time (npm).
     EOS
   end
 
   test do
     assert_match version.to_s, shell_output("#{bin}/kane-cli --version")
-    # Smoke-test that both bundled binaries are present and executable. Without
+    # Smoke-test that every bundled binary is present and executable. Without
     # this, `kane-cli --version` passes (it's pure JS) while the commands that
     # need a binary throw `not found` at the user. See git history for the
     # regression.
@@ -119,11 +125,18 @@ class KaneCli < Formula
       elsif OS.linux? && Hardware::CPU.intel?
         "@testmuai/kane-cli-linux-x64"
       end
-    bin_dir = libexec/"lib/node_modules/@testmuai/kane-cli/node_modules/#{runner_pkg}/bin"
-    ["v16-runner", "assurance-agent"].each do |name|
-      binary = bin_dir/name
+    pkg_root = libexec/"lib/node_modules/@testmuai/kane-cli/node_modules/#{runner_pkg}"
+    ["v16-runner", "assurance-agent", "node"].each do |name|
+      binary = pkg_root/"bin"/name
       assert_predicate binary, :exist?, "#{name} binary missing — platform pkg #{runner_pkg} not installed"
       assert_predicate binary, :executable?, "#{name} not executable — install-time chmod missed"
     end
+    # The bundled runtime must be exactly the version the platform package was
+    # built with — read the stamp, never hardcode a Node version here.
+    pin = JSON.parse((pkg_root/"package.json").read)["nodeRuntimeVersion"]
+    refute_nil pin, "platform package carries no nodeRuntimeVersion stamp"
+    assert_equal "v#{pin}", shell_output("#{pkg_root}/bin/node --version").strip
+    # And the CLI must actually RUN on it (trampoline respawn works end-to-end).
+    assert_match "(node v#{pin}, bundled runtime)", shell_output("#{bin}/kane-cli --version")
   end
 end
