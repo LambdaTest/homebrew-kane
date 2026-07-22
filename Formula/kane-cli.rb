@@ -136,7 +136,9 @@ class KaneCli < Formula
     pin = JSON.parse((pkg_root/"package.json").read)["nodeRuntimeVersion"]
     refute_nil pin, "platform package carries no nodeRuntimeVersion stamp"
     assert_equal "v#{pin}", shell_output("#{pkg_root}/bin/node --version").strip
-    # And the CLI must actually RUN on it (trampoline respawn works end-to-end).
-    assert_match "(node v#{pin}, bundled runtime)", shell_output("#{bin}/kane-cli --version")
+    # And the CLI must actually RUN on it: the trampoline warns on stderr
+    # whenever it falls back to system node, so a warning-free launch proves
+    # the bundled respawn end-to-end (--version output itself stays bare).
+    refute_match(/bundled Node runtime/, shell_output("#{bin}/kane-cli --version 2>&1"))
   end
 end
