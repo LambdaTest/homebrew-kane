@@ -21,17 +21,23 @@ class KaneCli < Formula
     args = std_npm_args.reject { |arg| arg == "--build-from-source" }
     system "npm", "install", *args
 
-    # Install the platform-specific optional dep that ships the binaries.
+    # Install the platform-specific optional deps that ship the binaries.
     # brew's `--prefix=#{libexec}` mode behaves like a global install and
-    # modern npm skips `optionalDependencies` in that mode, so the platform
-    # subpackage (@testmuai/kane-cli-<plat>) is missing after the main
-    # install — kane-cli then can't find its binaries at runtime.
+    # modern npm skips `optionalDependencies` in that mode, so the two
+    # subpackages are missing after the main install — kane-cli then can't
+    # find its binaries at runtime.
     #
-    # Install it explicitly into the main package's nested node_modules so
-    # the runtime resolver finds them via the first probed path (`<pkg>/dist
-    # /../node_modules/<plat-pkg>/bin/`). brew's --ignore-scripts also blocks
-    # the platform pkg's postinstall (which chmods the binaries), so chmod
-    # here ourselves.
+    # Since the node-split release the binaries live in TWO packages:
+    #   @testmuai/kane-cli-<plat>       -> v16-runner + assurance-agent,
+    #                                      versioned with the CLI
+    #   @testmuai/kane-cli-node-<plat>  -> the bundled Node runtime,
+    #                                      versioned by the NODE PIN (e.g.
+    #                                      24.18.0) and reused across CLI
+    #                                      releases until the pin moves
+    # Install both explicitly into the main package's nested node_modules so
+    # the runtime resolver finds them via the first probed path. brew's
+    # --ignore-scripts also blocks the packages' postinstall (which chmods
+    # the binaries), so chmod here ourselves.
     # Hardware::CPU.arm? is true on Linux aarch64 too — gate Linux on
     # `intel?` so we don't try to install an x64 binary on linux-arm64.
     platform_pkg =
@@ -46,15 +52,31 @@ class KaneCli < Formula
     # producing a silent broken install.
     odie "kane-cli does not yet ship a v16-runner binary for this platform." if platform_pkg.nil?
 
-    pkg_dir = libexec/"lib/node_modules/@testmuai/kane-cli"
-    bin_dir = pkg_dir/"node_modules/#{platform_pkg}/bin"
+    node_pkg = platform_pkg.sub("kane-cli-", "kane-cli-node-")
 
-    # The platform package ships three binaries and kane-cli needs them all:
-    # v16-runner drives the browser, assurance-agent backs AI test authoring,
-    # and node is the bundled runtime the CLI respawns onto (the `node`
-    # dependency above is install-time only). Checking only some leaves the
-    # rest free to go missing unnoticed.
-    binaries = ["v16-runner", "assurance-agent", "node"].to_h { |name| [name, bin_dir/name] }
+    pkg_dir = libexec/"lib/node_modules/@testmuai/kane-cli"
+
+    # The runtime package's version is whatever this CLI release pins in its
+    # optionalDependencies — read it from the installed meta, never hardcode
+    # a Node version here (the pin outlives CLI releases and moves on its
+    # own cadence).
+    node_pkg_version = JSON.parse((pkg_dir/"package.json").read)
+                           .dig("optionalDependencies", node_pkg)
+    if node_pkg_version.nil?
+      odie "#{node_pkg} is not in the meta's optionalDependencies — " \
+           "this formula requires a node-split kane-cli release (>= 0.6.6)."
+    end
+
+    # kane-cli needs every binary across both packages: v16-runner drives the
+    # browser, assurance-agent backs AI test authoring, and node is the
+    # bundled runtime the CLI respawns onto (the `node` dependency above is
+    # install-time only). Checking only some leaves the rest free to go
+    # missing unnoticed.
+    binaries = {
+      "v16-runner"      => pkg_dir/"node_modules/#{platform_pkg}/bin/v16-runner",
+      "assurance-agent" => pkg_dir/"node_modules/#{platform_pkg}/bin/assurance-agent",
+      "node"            => pkg_dir/"node_modules/#{node_pkg}/bin/node",
+    }
 
     # A binary counts as installed only if it exists AND is a real (multi-MB)
     # file — a present but empty/truncated one is the silent-broken-bottle mode.
@@ -63,7 +85,7 @@ class KaneCli < Formula
     end
 
     cd pkg_dir do
-      # Retry the platform install with backoff: the subpackage is published
+      # Retry the subpackage installs with backoff: they are published
       # separately from the main pkg and can lag behind on the npm registry,
       # so a fresh version may 404 / install nothing on the first try. Use
       # quiet_system (NOT system) so a nonzero exit doesn't raise and abort
@@ -76,7 +98,7 @@ class KaneCli < Formula
                      "--ignore-scripts", "--audit=false", "--fund=false",
                      "--loglevel=error", "--prefer-online",
                      "--cache=#{HOMEBREW_CACHE}/npm_cache",
-                     "#{platform_pkg}@#{version}"
+                     "#{platform_pkg}@#{version}", "#{node_pkg}@#{node_pkg_version}"
         # Retry until EVERY binary landed — breaking as soon as one is present
         # would let a half-installed package look complete and stop retrying.
         break if complete.call
@@ -91,12 +113,13 @@ class KaneCli < Formula
     else
       missing = binaries.reject { |_, path| path.exist? && path.size > 1_000_000 }
                         .map { |name, path| "#{name} (#{path.exist? ? "#{path.size} bytes" : "absent"})" }
-      msg = "missing or truncated after installing #{platform_pkg}@#{version}: #{missing.join(", ")}"
+      msg = "missing or truncated after installing #{platform_pkg}@#{version} + " \
+            "#{node_pkg}@#{node_pkg_version}: #{missing.join(", ")}"
       if ENV["CI"] || ENV["HOMEBREW_BUILD_BOTTLE"]
         odie msg
       else
         opoo "#{msg}. kane-cli is installed, but the commands that need these binaries will " \
-             "not work until the platform package is available on npm — re-run " \
+             "not work until the packages are available on npm — re-run " \
              "`brew reinstall kane-cli` later."
       end
     end
@@ -125,17 +148,23 @@ class KaneCli < Formula
       elsif OS.linux? && Hardware::CPU.intel?
         "@testmuai/kane-cli-linux-x64"
       end
-    pkg_root = libexec/"lib/node_modules/@testmuai/kane-cli/node_modules/#{runner_pkg}"
-    ["v16-runner", "assurance-agent", "node"].each do |name|
-      binary = pkg_root/"bin"/name
-      assert_predicate binary, :exist?, "#{name} binary missing — platform pkg #{runner_pkg} not installed"
-      assert_predicate binary, :executable?, "#{name} not executable — install-time chmod missed"
+    node_pkg = runner_pkg.sub("kane-cli-", "kane-cli-node-")
+    meta_root = libexec/"lib/node_modules/@testmuai/kane-cli"
+    pkg_root = meta_root/"node_modules/#{runner_pkg}"
+    node_root = meta_root/"node_modules/#{node_pkg}"
+    { pkg_root => ["v16-runner", "assurance-agent"], node_root => ["node"] }.each do |root, names|
+      names.each do |name|
+        binary = root/"bin"/name
+        assert_predicate binary, :exist?, "#{name} binary missing — #{root.basename} not installed"
+        assert_predicate binary, :executable?, "#{name} not executable — install-time chmod missed"
+      end
     end
-    # The bundled runtime must be exactly the version the platform package was
-    # built with — read the stamp, never hardcode a Node version here.
-    pin = JSON.parse((pkg_root/"package.json").read)["nodeRuntimeVersion"]
-    refute_nil pin, "platform package carries no nodeRuntimeVersion stamp"
-    assert_equal "v#{pin}", shell_output("#{pkg_root}/bin/node --version").strip
+    # The bundled runtime must be exactly the version the node package was
+    # built with — read the stamp (it lives in the NODE package since the
+    # split), never hardcode a Node version here.
+    pin = JSON.parse((node_root/"package.json").read)["nodeRuntimeVersion"]
+    refute_nil pin, "node package carries no nodeRuntimeVersion stamp"
+    assert_equal "v#{pin}", shell_output("#{node_root}/bin/node --version").strip
     # And the CLI must actually RUN on it: the trampoline warns on stderr
     # whenever it falls back to system node, so a warning-free launch proves
     # the bundled respawn end-to-end (--version output itself stays bare).
