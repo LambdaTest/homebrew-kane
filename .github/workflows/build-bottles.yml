@@ -213,7 +213,30 @@ jobs:
           VERSION="${{ needs.guard.outputs.version }}"
           ROOT_URL="https://github.com/LambdaTest/homebrew-kane/releases/download/kane-cli-${VERSION}"
 
-          brew install --build-bottle lambdatest/kane/kane-cli
+          # Bounded retry around the install. The formula's npm install treats
+          # platform packages as OPTIONAL deps: minutes after `npm publish`, a
+          # CDN edge that can't serve the fresh .tgz yet makes npm silently
+          # SKIP the package, and the formula's content check then aborts with
+          # "v16-runner (absent)" (0.6.2: run 29539227276; 0.2.9 incident was
+          # the same class). update-formula's availability gate now verifies
+          # tarball bytes before dispatching, but it fetches from a DIFFERENT
+          # runner/edge than this job — the authoritative retry lives here.
+          # Real formula bugs (e.g. agentless 0.6.0 packages) still fail: they
+          # fail identically on all three attempts.
+          INSTALL_OK=""
+          for attempt in 1 2 3; do
+            if brew install --build-bottle lambdatest/kane/kane-cli; then
+              INSTALL_OK="yes"
+              break
+            fi
+            echo "brew install attempt ${attempt}/3 failed — cleaning up and retrying in 90s (npm CDN propagation is the usual transient cause)..."
+            brew uninstall --force kane-cli 2>/dev/null || true
+            sleep 90
+          done
+          if [ -z "$INSTALL_OK" ]; then
+            echo "❌ brew install --build-bottle failed on all 3 attempts — not a propagation blip; see the last npm output above."
+            exit 1
+          fi
 
           # Version-drift guard: brew must have bottled the version `guard`
           # resolved from the checked-out formula. If the tap resolved a stale
