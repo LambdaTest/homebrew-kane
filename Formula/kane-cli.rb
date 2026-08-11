@@ -6,16 +6,10 @@ require "json"
 class KaneCli < Formula
   desc "KaneAI browser automation CLI - AI-powered testing"
   homepage "https://www.lambdatest.com/kane-ai"
-  url "https://registry.npmjs.org/@testmuai/kane-cli/-/kane-cli-0.7.1.tgz"
-  sha256 "255a29041574136d8cd89ac177c4a23b5802f0ff6fc6aeb466ddf8a84736a334"
+  url "https://registry.npmjs.org/@testmuai/kane-cli/-/kane-cli-0.7.2.tgz"
+  sha256 "e2dad96f5f6b257c36289d0678e495a07c624a32e26d94d2f68584d94561a5ea"
   license "Apache-2.0"
-  version "0.7.1"
-
-  bottle do
-    root_url "https://github.com/LambdaTest/homebrew-kane/releases/download/kane-cli-0.7.1"
-    sha256 cellar: :any_skip_relocation, arm64_sonoma: "47f859ab6dab8600fb9ffae09f22d867d68986a8231348c48fe4650a11374fdf"
-    sha256 cellar: :any_skip_relocation, x86_64_linux: "623c22c911c00dc1a09f768e433d21a4366ff82bd4eaa303eb8c595869ef5d5b"
-  end
+  version "0.7.2"
 
   depends_on "node"
 
