@@ -43,27 +43,51 @@ jobs:
         # non-bottled platforms (e.g. -darwin-x64) — a late one there must not
         # block the release; its absence only matters on a source-build, which
         # the formula's own install guard handles.
+        #
+        # Post-split releases ship the assurance-agent in its own
+        # kane-cli-assurance-<platform> package — poll it for the bottled
+        # platforms too, but only when the meta's optionalDependencies list
+        # it, so re-dispatching an older (pre-split) version stays valid.
         run: |
           VERSION="${{ steps.version.outputs.version }}"
-          PKGS="@testmuai/kane-cli \
-                @testmuai/kane-cli-darwin-arm64 \
-                @testmuai/kane-cli-linux-x64"
-          for PKG in $PKGS; do
+          poll() {
+            local PKG="$1"
             echo "Waiting for ${PKG}@${VERSION} on npmjs.com..."
-            FOUND=""
             for i in $(seq 1 24); do
+              # `|| true`: under the step's `set -e` a transient DNS/TLS/
+              # timeout error would otherwise kill the step on the spot —
+              # it must count as a failed poll (curl still emits 000) so
+              # the retry loop actually retries.
               STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
-                "https://registry.npmjs.org/${PKG}/${VERSION}")
+                --connect-timeout 5 --max-time 20 \
+                "https://registry.npmjs.org/${PKG}/${VERSION}" || true)
               if [ "$STATUS" = "200" ]; then
                 echo "${PKG}@${VERSION} is available."
-                FOUND="yes"
-                break
+                return 0
               fi
               echo "Poll ${i}/24 — HTTP ${STATUS}, sleeping 5s..."
               sleep 5
             done
-            if [ -z "$FOUND" ]; then
-              echo "ERROR: ${PKG}@${VERSION} not visible on npmjs.com after 2m"
+            echo "ERROR: ${PKG}@${VERSION} not visible on npmjs.com after 2m"
+            return 1
+          }
+          poll "@testmuai/kane-cli"
+          META=$(curl -fsSL "https://registry.npmjs.org/@testmuai/kane-cli/${VERSION}")
+          for P in darwin-arm64 linux-x64; do
+            poll "@testmuai/kane-cli-${P}"
+            # jq -e exits 0 when the dep is present, 1/4 when genuinely
+            # absent (pre-split release). Anything else means the meta
+            # response was not the JSON we expect — fail closed instead of
+            # misreading garbage as pre-split and skipping the poll.
+            RC=0
+            echo "$META" | jq -e --arg d "@testmuai/kane-cli-assurance-${P}" \
+              '.optionalDependencies[$d] // empty' >/dev/null || RC=$?
+            if [ "$RC" -eq 0 ]; then
+              poll "@testmuai/kane-cli-assurance-${P}"
+            elif [ "$RC" -eq 1 ] || [ "$RC" -eq 4 ]; then
+              echo "meta lists no @testmuai/kane-cli-assurance-${P} — pre-split release, not polled."
+            else
+              echo "ERROR: could not parse the registry meta for ${VERSION} (jq exit ${RC})"
               exit 1
             fi
           done
