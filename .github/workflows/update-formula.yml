@@ -54,8 +54,13 @@ jobs:
             local PKG="$1"
             echo "Waiting for ${PKG}@${VERSION} on npmjs.com..."
             for i in $(seq 1 24); do
+              # `|| true`: under the step's `set -e` a transient DNS/TLS/
+              # timeout error would otherwise kill the step on the spot —
+              # it must count as a failed poll (curl still emits 000) so
+              # the retry loop actually retries.
               STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
-                "https://registry.npmjs.org/${PKG}/${VERSION}")
+                --connect-timeout 5 --max-time 20 \
+                "https://registry.npmjs.org/${PKG}/${VERSION}" || true)
               if [ "$STATUS" = "200" ]; then
                 echo "${PKG}@${VERSION} is available."
                 return 0
@@ -70,11 +75,20 @@ jobs:
           META=$(curl -fsSL "https://registry.npmjs.org/@testmuai/kane-cli/${VERSION}")
           for P in darwin-arm64 linux-x64; do
             poll "@testmuai/kane-cli-${P}"
-            if echo "$META" | jq -e --arg d "@testmuai/kane-cli-assurance-${P}" \
-                 '.optionalDependencies[$d] // empty' >/dev/null; then
+            # jq -e exits 0 when the dep is present, 1/4 when genuinely
+            # absent (pre-split release). Anything else means the meta
+            # response was not the JSON we expect — fail closed instead of
+            # misreading garbage as pre-split and skipping the poll.
+            RC=0
+            echo "$META" | jq -e --arg d "@testmuai/kane-cli-assurance-${P}" \
+              '.optionalDependencies[$d] // empty' >/dev/null || RC=$?
+            if [ "$RC" -eq 0 ]; then
               poll "@testmuai/kane-cli-assurance-${P}"
-            else
+            elif [ "$RC" -eq 1 ] || [ "$RC" -eq 4 ]; then
               echo "meta lists no @testmuai/kane-cli-assurance-${P} — pre-split release, not polled."
+            else
+              echo "ERROR: could not parse the registry meta for ${VERSION} (jq exit ${RC})"
+              exit 1
             fi
           done
 
