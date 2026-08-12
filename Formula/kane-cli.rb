@@ -27,14 +27,22 @@ class KaneCli < Formula
     # subpackages are missing after the main install — kane-cli then can't
     # find its binaries at runtime.
     #
-    # Since the node-split release the binaries live in TWO packages:
-    #   @testmuai/kane-cli-<plat>       -> v16-runner + assurance-agent,
-    #                                      versioned with the CLI
-    #   @testmuai/kane-cli-node-<plat>  -> the bundled Node runtime,
-    #                                      versioned by the NODE PIN (e.g.
-    #                                      24.18.0) and reused across CLI
-    #                                      releases until the pin moves
-    # Install both explicitly into the main package's nested node_modules so
+    # Since the node-split release the binaries live in separate packages:
+    #   @testmuai/kane-cli-<plat>            -> v16-runner, versioned with
+    #                                           the CLI
+    #   @testmuai/kane-cli-assurance-<plat>  -> assurance-agent, versioned
+    #                                           with the CLI (split out of
+    #                                           the platform package when the
+    #                                           combined tarball outgrew
+    #                                           npm's publish size cap;
+    #                                           pre-split releases ship it
+    #                                           inside the platform package)
+    #   @testmuai/kane-cli-node-<plat>       -> the bundled Node runtime,
+    #                                           versioned by the NODE PIN
+    #                                           (e.g. 24.18.0) and reused
+    #                                           across CLI releases until
+    #                                           the pin moves
+    # Install them explicitly into the main package's nested node_modules so
     # the runtime resolver finds them via the first probed path. brew's
     # --ignore-scripts also blocks the packages' postinstall (which chmods
     # the binaries), so chmod here ourselves.
@@ -60,12 +68,20 @@ class KaneCli < Formula
     # optionalDependencies — read it from the installed meta, never hardcode
     # a Node version here (the pin outlives CLI releases and moves on its
     # own cadence).
-    node_pkg_version = JSON.parse((pkg_dir/"package.json").read)
-                           .dig("optionalDependencies", node_pkg)
+    meta = JSON.parse((pkg_dir/"package.json").read)
+    node_pkg_version = meta.dig("optionalDependencies", node_pkg)
     if node_pkg_version.nil?
       odie "#{node_pkg} is not in the meta's optionalDependencies — " \
            "this formula requires a node-split kane-cli release (>= 0.6.6)."
     end
+
+    # Layout discovery, not a version cutoff: a meta that lists the assurance
+    # package in optionalDependencies is a post-split release (agent in its
+    # own package); one that doesn't is pre-split (agent inside the platform
+    # package). Both install correctly from this formula.
+    assurance_pkg = platform_pkg.sub("kane-cli-", "kane-cli-assurance-")
+    assurance_pkg_version = meta.dig("optionalDependencies", assurance_pkg)
+    agent_pkg = assurance_pkg_version ? assurance_pkg : platform_pkg
 
     # kane-cli needs every binary across both packages: v16-runner drives the
     # browser, assurance-agent backs AI test authoring, and node is the
@@ -74,9 +90,12 @@ class KaneCli < Formula
     # missing unnoticed.
     binaries = {
       "v16-runner"      => pkg_dir/"node_modules/#{platform_pkg}/bin/v16-runner",
-      "assurance-agent" => pkg_dir/"node_modules/#{platform_pkg}/bin/assurance-agent",
+      "assurance-agent" => pkg_dir/"node_modules/#{agent_pkg}/bin/assurance-agent",
       "node"            => pkg_dir/"node_modules/#{node_pkg}/bin/node",
     }
+
+    install_specs = ["#{platform_pkg}@#{version}", "#{node_pkg}@#{node_pkg_version}"]
+    install_specs << "#{assurance_pkg}@#{assurance_pkg_version}" if assurance_pkg_version
 
     # A binary counts as installed only if it exists AND is a real (multi-MB)
     # file — a present but empty/truncated one is the silent-broken-bottle mode.
@@ -98,7 +117,7 @@ class KaneCli < Formula
                      "--ignore-scripts", "--audit=false", "--fund=false",
                      "--loglevel=error", "--prefer-online",
                      "--cache=#{HOMEBREW_CACHE}/npm_cache",
-                     "#{platform_pkg}@#{version}", "#{node_pkg}@#{node_pkg_version}"
+                     *install_specs
         # Retry until EVERY binary landed — breaking as soon as one is present
         # would let a half-installed package look complete and stop retrying.
         break if complete.call
@@ -113,8 +132,8 @@ class KaneCli < Formula
     else
       missing = binaries.reject { |_, path| path.exist? && path.size > 1_000_000 }
                         .map { |name, path| "#{name} (#{path.exist? ? "#{path.size} bytes" : "absent"})" }
-      msg = "missing or truncated after installing #{platform_pkg}@#{version} + " \
-            "#{node_pkg}@#{node_pkg_version}: #{missing.join(", ")}"
+      msg = "missing or truncated after installing #{install_specs.join(" + ")}: " \
+            "#{missing.join(", ")}"
       if ENV["CI"] || ENV["HOMEBREW_BUILD_BOTTLE"]
         odie msg
       else
@@ -150,14 +169,19 @@ class KaneCli < Formula
       end
     node_pkg = runner_pkg.sub("kane-cli-", "kane-cli-node-")
     meta_root = libexec/"lib/node_modules/@testmuai/kane-cli"
+    # Same layout discovery as def install: post-split metas list the
+    # assurance package in optionalDependencies; pre-split releases carry the
+    # agent inside the platform package.
+    assurance_pkg = runner_pkg.sub("kane-cli-", "kane-cli-assurance-")
+    meta = JSON.parse((meta_root/"package.json").read)
+    agent_pkg = meta.dig("optionalDependencies", assurance_pkg) ? assurance_pkg : runner_pkg
     pkg_root = meta_root/"node_modules/#{runner_pkg}"
+    agent_root = meta_root/"node_modules/#{agent_pkg}"
     node_root = meta_root/"node_modules/#{node_pkg}"
-    { pkg_root => ["v16-runner", "assurance-agent"], node_root => ["node"] }.each do |root, names|
-      names.each do |name|
-        binary = root/"bin"/name
-        assert_predicate binary, :exist?, "#{name} binary missing — #{root.basename} not installed"
-        assert_predicate binary, :executable?, "#{name} not executable — install-time chmod missed"
-      end
+    [[pkg_root, "v16-runner"], [agent_root, "assurance-agent"], [node_root, "node"]].each do |root, name|
+      binary = root/"bin"/name
+      assert_path_exists binary, "#{name} binary missing — #{root.basename} not installed"
+      assert_predicate binary, :executable?, "#{name} not executable — install-time chmod missed"
     end
     # The bundled runtime must be exactly the version the node package was
     # built with — read the stamp (it lives in the NODE package since the
