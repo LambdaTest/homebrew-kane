@@ -13,7 +13,7 @@
 With TestMu AI (Formerly LambdaTest), you can install and manage the KaneAI browser automation CLI on macOS using Homebrew, giving you AI-powered browser test authoring directly from the command line.
 
 - [Sign up on TestMu AI](https://www.testmuai.com/register/) (Formerly LambdaTest).
-- Follow the [TestMu AI Documentation](https://www.testmuai.com/support/docs/) for the full setup walkthrough.
+- Follow the [Kane CLI Documentation](https://www.testmuai.com/docs/kane-cli-introduction) for the full setup walkthrough.
 
 ### Prerequisites
 
