@@ -4,7 +4,7 @@ name: Validate brew install
 # every platform we ship to. Catches:
 #   - bottle pour failures (gzip corruption, tar truncation)
 #   - missing v16-runner binary in the bottle
-#   - bottle-fallback breakage (e.g., Tahoe falling back to sonoma)
+#   - bottle-fallback breakage (e.g., Tahoe falling back to sequoia)
 #   - source-build failures on platforms without a bottle (Intel Mac)
 #   - regressions in the formula's `def install` after refactors
 #
@@ -80,12 +80,12 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: macos-14
-            label: arm64_sonoma (bottled, primary)
+          - os: macos-15
+            label: arm64_sequoia (bottled, primary)
             expected-install-path: bottle
             install-flags: ""
-          - os: macos-15
-            label: arm64_sequoia (bottle-fallback to sonoma)
+          - os: macos-26
+            label: arm64_tahoe (bottle-fallback to sequoia)
             expected-install-path: bottle
             install-flags: ""
           - os: ubuntu-latest
@@ -103,8 +103,8 @@ jobs:
           # Intel runner. continue-on-error doesn't help: it lets a
           # FAILED job pass, but a queued-never-allocated job leaves
           # the workflow "in progress" with no signal.
-          - os: macos-14
-            label: arm64_sonoma (source-build, def-install regression check)
+          - os: macos-15
+            label: arm64_sequoia (source-build, def-install regression check)
             expected-install-path: source
             install-flags: "--build-from-source"
     steps:
