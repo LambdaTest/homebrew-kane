@@ -35,7 +35,7 @@ jobs:
 
       - name: Wait for npm package availability
         # Poll the main package AND every platform subpackage that the bottle
-        # matrix builds (macos-14=arm64, ubuntu=x86_64-linux) before this
+        # matrix builds (macos-15=arm64, ubuntu=x86_64-linux) before this
         # workflow auto-chains "Build bottles". The platform subpackages are
         # published separately from the main package and can lag behind on the
         # registry; if bottling starts before -darwin-arm64 is live, the formula

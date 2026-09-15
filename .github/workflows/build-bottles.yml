@@ -122,18 +122,25 @@ jobs:
         # platform = adding one entry here, no other workflow changes.
         #
         # Coverage today:
-        #   macos-14      → arm64_sonoma     (Apple Silicon, macOS 14)
-        #                   Covers Sonoma + Sequoia + Tahoe via brew's
-        #                   bottle-fallback (verified end-to-end on Tahoe).
+        #   macos-15      → arm64_sequoia    (Apple Silicon, macOS 15)
+        #                   Covers Sequoia and every newer macOS via brew's
+        #                   bottle-fallback: a bottle built on an older
+        #                   macOS is used by newer ones, never the reverse.
         #   ubuntu-latest → x86_64_linux
         #
         # Not in matrix:
-        #   macos-15 / macos-latest — reproducibly produces gzip-CRC-corrupt
-        #     bottles when bottling kane-cli (homebrew-kane#12 + #13). brew
-        #     extraction bails mid-stream on user machines. macos-latest
-        #     currently aliases macos-15 so it inherits the bug. macos-14
-        #     bottle covers all newer arm64 macOS via fallback. Re-add once
-        #     the Sequoia gzip corruption is root-caused.
+        #   macos-14 — Sonoma is a Homebrew Tier 3 configuration as of
+        #     September 2026. homebrew-core no longer publishes sonoma
+        #     bottles, so `brew install --build-bottle` refuses as soon as
+        #     any dependency ships a release without one (xz 5.8.4 was the
+        #     first). macos-14 was the sole macOS builder from April to
+        #     September 2026 because macos-15 then produced gzip-CRC-corrupt
+        #     bottles (#12, #13); that was never root-caused, and the
+        #     "Verify bottle integrity" step below is the guard — a corrupt
+        #     bottle fails the job instead of shipping. Sonoma users now
+        #     install through the formula's source path (`def install`).
+        #   macos-latest — a moving alias; the version is pinned so the
+        #     bottle label stays predictable.
         #   ventura — Intel x86_64. `macos-13` is GHA's last free Intel pool,
         #     deprecating, queues for hours. Intel users install fine via
         #     formula's `def install` source-build path (npm install runs
@@ -143,7 +150,7 @@ jobs:
         #   arm64_linux — `@testmuai/kane-cli-linux-arm64` does not exist
         #     on npm, so there's no platform binary to bundle.
         os:
-          - macos-14
+          - macos-15
           - ubuntu-latest
     runs-on: ${{ matrix.os }}
     steps:
@@ -246,12 +253,13 @@ jobs:
           ls -la kane-cli-*.bottle.* || true
 
       - name: Verify bottle integrity
-        # Gate against silently-corrupt bottles before upload. macos-15
-        # produced gzip-CRC-corrupt bottles for kane-cli 0.2.9 across
-        # multiple builds (homebrew-kane#12) — file existed at the right
-        # size, build "succeeded", upload completed, but `gzip -t` failed
-        # and brew extraction bailed on user machines. This step would
-        # have caught it. Checks:
+        # Gate against silently-corrupt bottles before upload. In April 2026
+        # macos-15 produced gzip-CRC-corrupt bottles for kane-cli 0.2.9
+        # across multiple builds (#12) — file existed at the right size,
+        # build "succeeded", upload completed, but `gzip -t` failed and brew
+        # extraction bailed on user machines. This step would have caught
+        # it, and it is what makes building on macos-15 again safe: a bad
+        # bottle fails here instead of reaching a user. Checks:
         #   1. `gzip -t` — verifies the gzip stream itself
         #   2. `tar -tzf` — verifies tar can list contents end-to-end
         #      (catches truncation where gzip is fine but tar payload is
@@ -354,7 +362,7 @@ jobs:
         with:
           path: bottles
           # When two runners produce bottles with the same label (e.g.
-          # macos-latest aliasing macos-14 today), download-artifact's
+          # macos-latest aliasing a pinned runner), download-artifact's
           # merge keeps one — same-label bottles are interchangeable.
           merge-multiple: true
 
