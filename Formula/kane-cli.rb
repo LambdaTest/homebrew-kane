@@ -11,6 +11,12 @@ class KaneCli < Formula
   license "Apache-2.0"
   version "0.8.18"
 
+  bottle do
+    root_url "https://github.com/LambdaTest/homebrew-kane/releases/download/kane-cli-0.8.18"
+    sha256 cellar: :any_skip_relocation, arm64_sequoia: "ccb9dcddd57d24e880c2f47c3126f3ebb6dcebcd7fc118c38b6c8a7d02462615"
+    sha256 cellar: :any_skip_relocation, x86_64_linux:  "46c3f90791dcea1ca56655a9da91e76013c0e29af86d2e80787610b5b22c682f"
+  end
+
   depends_on "node"
 
   def install
