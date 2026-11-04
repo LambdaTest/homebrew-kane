@@ -1,4 +1,4 @@
-# KaneAI CLI for TestMu AI (Formerly LambdaTest)
+# Kane CLI for TestMu AI (Formerly LambdaTest)
 
 <p align="center">
   <a href="https://www.testmuai.com/"><img src="https://img.shields.io/badge/MADE%20BY%20TestMu%20AI-000000.svg?style=for-the-badge&labelColor=000" alt="Made by TestMu AI"></a>
@@ -10,41 +10,32 @@
 
 [TestMu AI](https://www.testmuai.com/) (Formerly LambdaTest) is the world's first full-stack AI Agentic Quality Engineering platform that empowers teams to test intelligently, smarter, and ship faster. Built for scale, it offers a full-stack testing cloud with 10K+ real devices and 3,000+ browsers. With AI-native test management, MCP servers, and agent-based automation, TestMu AI supports Selenium, Appium, Playwright, and all major frameworks. 
 
-With TestMu AI (Formerly LambdaTest), you can install and manage the KaneAI browser automation CLI on macOS using Homebrew, giving you AI-powered browser test authoring directly from the command line.
+With TestMu AI (Formerly LambdaTest), you can install and manage [Kane CLI](https://www.testmuai.com/kane-cli/) on macOS and Linux using Homebrew, and run plain-English browser tests directly from the command line.
 
 - [Sign up on TestMu AI](https://www.testmuai.com/register/) (Formerly LambdaTest).
 - Follow the [Kane CLI Documentation](https://www.testmuai.com/docs/kane-cli-introduction) for the full setup walkthrough.
 
 ### Prerequisites
 
-- macOS with [Homebrew](https://brew.sh/) installed
+- macOS (Apple Silicon or Intel) or Linux x64 with [Homebrew](https://brew.sh/) installed
 - Node.js (installed automatically as a dependency via Homebrew)
 - A TestMu AI (Formerly LambdaTest) account with your username and access key
 
 ### Setup
 
-Clone and install dependencies:
+Install with Homebrew:
 
 ```bash
-git clone https://github.com/LambdaTest/homebrew-kane && cd homebrew-kane
-brew tap LambdaTest/kane
-brew install kane-cli
+brew install LambdaTest/kane/kane-cli
 ```
 
-Set your credentials as environment variables.
+Upgrade later with `brew upgrade kane-cli`.
 
-**macOS / Linux:**
+Set your credentials as environment variables.
 
 ```bash
 export LT_USERNAME="YOUR_USERNAME"
 export LT_ACCESS_KEY="YOUR_ACCESS_KEY"
-```
-
-**Windows:**
-
-```bash
-set LT_USERNAME="YOUR_USERNAME"
-set LT_ACCESS_KEY="YOUR_ACCESS_KEY"
 ```
 
 ### Run tests

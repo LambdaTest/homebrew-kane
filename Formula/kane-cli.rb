@@ -4,8 +4,8 @@
 require "json"
 
 class KaneCli < Formula
-  desc "KaneAI browser automation CLI - AI-powered testing"
-  homepage "https://www.lambdatest.com/kane-ai"
+  desc "Run plain-English browser tests with TestMu AI (formerly LambdaTest)"
+  homepage "https://www.testmuai.com/kane-cli/"
   url "https://registry.npmjs.org/@testmuai/kane-cli/-/kane-cli-0.10.0.tgz"
   sha256 "70c6bad703f576af5b5d621501242646e0e1c244d078f349d7bd797f9d84b2a0"
   license "Apache-2.0"
