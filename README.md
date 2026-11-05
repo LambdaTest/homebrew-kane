@@ -10,7 +10,7 @@
 
 [TestMu AI](https://www.testmuai.com/) (Formerly LambdaTest) is the world's first full-stack AI Agentic Quality Engineering platform that empowers teams to test intelligently, smarter, and ship faster. Built for scale, it offers a full-stack testing cloud with 10K+ real devices and 3,000+ browsers. With AI-native test management, MCP servers, and agent-based automation, TestMu AI supports Selenium, Appium, Playwright, and all major frameworks. 
 
-With TestMu AI (Formerly LambdaTest), you can install and manage [Kane CLI](https://www.testmuai.com/kane-cli/) on macOS and Linux using Homebrew, and run plain-English browser tests directly from the command line.
+With TestMu AI (Formerly LambdaTest), you can install and manage [Kane CLI](https://www.testmuai.com/kane-cli/) on macOS and Linux using Homebrew, and run natural language browser tests directly from the command line.
 
 - [Sign up on TestMu AI](https://www.testmuai.com/register/) (Formerly LambdaTest).
 - Follow the [Kane CLI Documentation](https://www.testmuai.com/docs/kane-cli-introduction) for the full setup walkthrough.
