@@ -16,10 +16,21 @@ permissions:
   # `gh workflow run`. Default GITHUB_TOKEN scope only covers contents
   # in workflow context.
   actions: write
+  # scripts/merge-via-pr.sh opens and merges the formula PR.
+  pull-requests: write
+
+# One formula update at a time, across versions: a queued run reads the
+# formula the previous run landed on main.
+concurrency:
+  group: kane-cli-formula-update
+  cancel-in-progress: false
 
 jobs:
   update:
     runs-on: ubuntu-latest
+    # Most of a run is the wait for a maintainer to approve the formula PR;
+    # scripts/merge-via-pr.sh gives up inside this 6-hour hosted-job limit.
+    timeout-minutes: 360
     steps:
       - name: Checkout tap
         uses: actions/checkout@v4
@@ -146,8 +157,13 @@ jobs:
           echo "Updated formula to ${VERSION}:"
           cat "$FORMULA"
 
+      # main takes changes only through an approved PR, so the commit lands
+      # through one: a maintainer approves it and this step merges it,
+      # refusing if main moved in the meantime.
       - name: Commit and push
         id: commit
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           VERSION="${{ steps.version.outputs.version }}"
           git config user.name "github-actions[bot]"
@@ -159,7 +175,8 @@ jobs:
             exit 0
           fi
           git commit -m "Update kane-cli to ${VERSION}"
-          git push
+          scripts/merge-via-pr.sh "chore/kane-cli-${VERSION}" "Update kane-cli to ${VERSION}" \
+            "then run Build bottles with version=${VERSION}"
           echo "committed=true" >> "$GITHUB_OUTPUT"
 
       # Auto-chain Build bottles after the formula bump. Conditional on
