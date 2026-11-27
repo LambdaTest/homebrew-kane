@@ -6,10 +6,10 @@ require "json"
 class KaneCli < Formula
   desc "Run natural language browser tests with TestMu AI (formerly LambdaTest)"
   homepage "https://www.testmuai.com/kane-cli/"
-  url "https://registry.npmjs.org/@testmuai/kane-cli/-/kane-cli-0.10.0.tgz"
-  sha256 "70c6bad703f576af5b5d621501242646e0e1c244d078f349d7bd797f9d84b2a0"
+  url "https://registry.npmjs.org/@testmuai/kane-cli/-/kane-cli-0.10.11.tgz"
+  sha256 "6fd953b95ea322595251a820758feceaa677af3a917fe67d4392fc1a626334ff"
   license "Apache-2.0"
-  version "0.10.0"
+  version "0.10.11"
 
   depends_on "node"
 
