@@ -1,0 +1,32 @@
+name: test-scripts
+
+# Runs the harnesses under scripts/ against the real scripts the release
+# workflows call.
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  scripts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run the script harnesses
+        run: |
+          shopt -s nullglob
+          harnesses=(scripts/test-*.sh)
+          # A glob that matches nothing would be a green run that checked nothing.
+          if [ "${#harnesses[@]}" -lt 1 ]; then
+            echo "::error::no harnesses matching scripts/test-*.sh"
+            exit 1
+          fi
+          for t in "${harnesses[@]}"; do
+            echo "::group::$t"
+            bash "$t"
+            echo "::endgroup::"
+          done

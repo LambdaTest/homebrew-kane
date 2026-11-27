@@ -1,0 +1,46 @@
+#!/usr/bin/env bash
+# Stand-in for `gh` in the harnesses: just enough of `gh pr` for
+# scripts/merge-via-pr.sh, against a local bare repository that plays the
+# GitHub remote. Every call is appended to $FAKE_GH_STATE/calls.
+#
+# $FAKE_GH_STATE/remote  path of the bare remote (required)
+# $FAKE_GH_STATE/open    lines "URL<TAB>HEAD" that `pr list` reports
+# $FAKE_GH_STATE/views   lines "STATE REVIEW" that `pr view` reports, one
+#                        per call, the last repeating; default OPEN APPROVED
+# FAKE_GH_REFUSE_MERGE=1 makes every `pr merge` fail
+set -euo pipefail
+S="$FAKE_GH_STATE"
+printf '%s\n' "$*" >> "$S/calls"
+URL=https://github.com/LambdaTest/homebrew-kane/pull/101
+arg() { # arg FLAG ARGS...: the value after FLAG
+  local flag="$1"; shift
+  while [ $# -gt 0 ]; do [ "$1" = "$flag" ] && { echo "$2"; return; }; shift; done
+}
+
+case "$1 $2" in
+  "pr list") cat "$S/open" 2>/dev/null || true ;;
+  "pr create")
+    arg --head "$@" > "$S/head"
+    echo "$URL" ;;
+  "pr close")
+    [ "$3" = "$URL" ] && echo CLOSED > "$S/final"
+    echo "$3" >> "$S/closed" ;;
+  "pr view")
+    if [ -f "$S/final" ]; then echo "$(cat "$S/final") APPROVED"; exit 0; fi
+    if [ -s "$S/views" ]; then
+      line="$(head -1 "$S/views")"
+      [ "$(wc -l < "$S/views")" -gt 1 ] && sed -i.bak 1d "$S/views"
+      echo "$line"
+    else
+      echo "OPEN APPROVED"
+    fi ;;
+  "pr merge")
+    [ "${FAKE_GH_REFUSE_MERGE:-}" = 1 ] && { echo "merge refused" >&2; exit 1; }
+    git_r() { git --git-dir "$(cat "$S/remote")" "$@"; }
+    head_sha="$(git_r rev-parse "refs/heads/$(cat "$S/head")")"
+    [ "$head_sha" = "$(arg --match-head-commit "$@")" ] || { echo "head moved" >&2; exit 1; }
+    [ "$(git_r rev-parse "$head_sha^")" = "$(git_r rev-parse refs/heads/main)" ] || { echo "conflict" >&2; exit 1; }
+    git_r update-ref refs/heads/main "$head_sha"
+    echo MERGED > "$S/final" ;;
+  *) echo "fake-gh: unsupported: $*" >&2; exit 2 ;;
+esac

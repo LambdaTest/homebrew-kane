@@ -64,6 +64,15 @@ tunnel: true,
 
 Contributions are welcome. Open an issue to discuss your idea before submitting a pull request. When reporting bugs, include your Node.js version, OS, and Homebrew version.
 
+### Releasing a new version
+
+Changes reach `main` only through an approved pull request, so each kane-cli release opens two:
+
+1. **Update kane-cli to `<version>`** — opened by `Update Homebrew Formula`. Once it is approved, the workflow merges it and starts `Build bottles`.
+2. **Add bottle block for kane-cli `<version>`** — opened by `Build bottles`. Once it is approved, the workflow merges it and starts `Validate brew install`.
+
+Each workflow waits up to 5½ hours for the approval. If that runs out, the PR stays open: approve and merge it, then start the next workflow by hand with the same version. `scripts/merge-via-pr.sh` does the PR handling; `scripts/test-merge-via-pr.sh` tests it and runs in CI.
+
 ## TestMu AI (Formerly LambdaTest) Community
 
 Connect with testers and developers in the [TestMu AI Community](https://community.testmuai.com/). Ask questions, share what you are building, and discuss best practices in test automation and DevOps.

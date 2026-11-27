@@ -36,6 +36,8 @@ permissions:
   # "Resource not accessible by integration" — default GITHUB_TOKEN
   # has only contents permissions in workflow context.
   actions: write
+  # scripts/merge-via-pr.sh opens and merges the bottle-block PR.
+  pull-requests: write
 
 # Serialize bottle-publish runs so two overlapping invocations can't race
 # each other on the formula commit / release upload. `cancel-in-progress:
@@ -327,6 +329,9 @@ jobs:
   publish:
     needs: [guard, build]
     runs-on: ubuntu-latest
+    # Most of a run is the wait for a maintainer to approve the bottle-block
+    # PR; scripts/merge-via-pr.sh gives up inside this 6-hour hosted-job limit.
+    timeout-minutes: 360
     steps:
       - uses: actions/checkout@v4
         with:
@@ -456,7 +461,13 @@ jobs:
           print(src)
           PY
 
+      # main takes changes only through an approved PR, so the bottle block
+      # lands through one: a maintainer approves it and this step merges it,
+      # refusing if main moved in the meantime.
       - name: Commit bottle block
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ needs.guard.outputs.version }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
@@ -465,8 +476,9 @@ jobs:
             echo "No formula changes — bottle block already current."
             exit 0
           fi
-          git commit -m "Add bottle block for kane-cli ${{ needs.guard.outputs.version }}"
-          git push origin main
+          git commit -m "Add bottle block for kane-cli ${VERSION}"
+          scripts/merge-via-pr.sh "chore/kane-cli-${VERSION}-bottles" "Add bottle block for kane-cli ${VERSION}" \
+            "then run Validate brew install with expected-version=${VERSION}"
 
       - name: Trigger Validate brew install with explicit version
         # Chain validation via `gh workflow run` instead of `workflow_run`
